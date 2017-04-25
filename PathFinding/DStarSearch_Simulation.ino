@@ -23,7 +23,7 @@ byte action = BYTE_INF;       // action contains the next action to take (0 = UP
 byte actionCount = BYTE_INF;  // the number of times the action must be taken (e.g., action == UP && actionCount == 3: Move 3 squares up or move up 3 ft.)
 byte orientAction = 0;        // action needed to correct the car's orientation (0 == NO ACTION NEEDED, 1 = TURN LEFT, 2 = TURN RIGHT, 3 = TURN AROUND)
 byte stepCount = 0;           // SIMULATION - for keeping track of the cars position
-byte stepsToObstacle = 2;     // SIMULATION - for adding in obstacles to the simulation
+byte stepsToObstacle = 3;     // SIMULATION - for adding in obstacles to the simulation
 
 bool ACTION_COMPLETE = true;  // has the car finished taking the given action? INITIALLY TRUE - action is initialization
 bool FAIL = false;            // is the goal unreachable?
@@ -36,7 +36,7 @@ byte getReorientAct() {
   byte orientation = car.orientation;
   if (orientation == action)
     return 0; // Already in the correct orientation
-  if (action == BYTE_INF)
+  if (actionCount > 10)
     return 0; // Can't reach goal - why reorient - May never be true
 
   if (orientation == 0) {// car -> UP
@@ -49,6 +49,9 @@ byte getReorientAct() {
     else if (action == 3) { // action -> LEFT
       return 1; // Turn the car left
     }
+    else if (action == 4) { // action -> RIGHT
+      return 2; // Turn right
+    }
   }
   else if (orientation == 1) {// car -> RIGHT
     if (action == 0) { // action -> UP
@@ -59,6 +62,9 @@ byte getReorientAct() {
     }
     else if (action == 3) { // action -> LEFT
       return 3; // Turn the car around (180 degrees)
+    }
+    else if (action == 5) { // action -> UP
+      return 1; // Turn the car left
     }
   }
   else if (orientation == 2) {// car -> DOWN
@@ -71,6 +77,12 @@ byte getReorientAct() {
     else if (action == 3) { // action -> LEFT
       return 2; // Turn right
     }
+    else if (action == 4) { // action -> RIGHT
+      return 1; // Turn the car left
+    }
+    else if (action == 5) { // action -> UP
+      return 3; // Turn the car around (180 degrees)
+    }
   }
   else if (orientation == 3) {// car -> LEFT
     if (action == 0) { // action -> UP
@@ -81,6 +93,12 @@ byte getReorientAct() {
     }
     else if (action == 2) { // action -> DOWN
       return 1; // Turn the car left
+    }
+    else if (action == 4) { // action -> RIGHT
+      return 3; // Turn the car around (180 degrees)
+    }
+    else if (action == 5) { // action -> UP
+      return 2; // Turn right
     }
   }
   else
@@ -132,7 +150,7 @@ void loop() {
       search.getNextAction(action, actionCount); // Get the next action and the number of times to take that action
       ACTION_COMPLETE = false;  // New action -> reset ACTION_COMPLETE
       stepCount = 0;            // SIMULATION New action -> reset stepCount
-      if (action == BYTE_INF) { // BYTE_INF is a custom globally defined variable part of my pathfinding code: BYTE_INF == 255
+      if (action == BYTE_INF || actionCount > 10) { // BYTE_INF is a custom globally defined variable part of my pathfinding code: BYTE_INF == 255
         FAIL = true;
         Serial.println("Unable to reach the goal!");
         return;
@@ -145,14 +163,29 @@ void loop() {
         if (orientAction == 1) {
           /* TODO - MOTOR CONTROL */
           // turn the car left
+          Serial.println("\nTurning the car 90 degrees counter-clockwise");
+          if (car.orientation != 0)
+            car.orientation--;
+          else
+            car.orientation = 3;
         }
         else if (orientAction == 2) {
           /* TODO - MOTOR CONTROL */
           // turn the car right
+          Serial.println("\nTurning the car 90 degrees clockwise");
+          if (car.orientation != 3)
+            car.orientation++;
+          else
+            car.orientation = 0;
         }
         else if (orientAction == 3) {
           /* TODO - MOTOR CONTROL */
           // Turn the car around (180 degrees)
+          Serial.println("\nTurning the car around 180 degrees");
+          if (car.orientation > 1)
+            car.orientation -= 2;
+          else
+            car.orientation += 2;
         }
       }
 
@@ -171,6 +204,18 @@ void loop() {
           break;
         case 3: // left
           Serial.print("'LEFT'");
+          break;
+        case 4: // RIGHT/DOWN CURVE
+          Serial.print("'RIGHT/DOWN CURVE'");
+          break;
+        case 5: // UP/LEFT CURVE
+          Serial.print("'UP/LEFT CURVE'");
+          break;
+        case 6: // RIGHT/DOWN CURVE REVERSE
+          Serial.print("Returning from: 'RIGHT/DOWN CURVE'");
+          break;
+        case 7: // UP/LEFT CURVE REVERSE
+          Serial.print("Returning from: 'UP/LEFT CURVE'");
           break;
       }
       Serial.print("\n\tSteps to take: ");
@@ -215,6 +260,14 @@ void loop() {
           Serial.print(car.col - 1);
           Serial.print(")\n");
           break;
+        case 4:
+          Serial.println("CURVE)");
+          stepsToObstacle++;
+          break;
+        case 5:
+          Serial.println("CURVE)");
+          stepsToObstacle++;
+          break;
       }
 
       /* recomputeShortestPath(byte row, byte col, byte &action, byte &actionCount)
@@ -231,7 +284,6 @@ void loop() {
               at the beginning of the loop()
       */
       search.recomputeShortestPath(car.row, car.col, action, actionCount);
-
       /* Check if we need to return to the previous node after recomputing the path */
       if (actionCount == 0) // We did move from the previous node, therefore we do not need to return
         ACTION_COMPLETE = true;
@@ -244,14 +296,29 @@ void loop() {
           if (orientAction == 1) {
             /* TODO - MOTOR CONTROL */
             // turn the car left
+            Serial.println("\nTurning the car 90 degrees counter-clockwise");
+            if (car.orientation != 0)
+              car.orientation--;
+            else
+              car.orientation = 3;
           }
           else if (orientAction == 2) {
             /* TODO - MOTOR CONTROL */
             // turn the car right
+            Serial.println("\nTurning the car 90 degrees clockwise");
+            if (car.orientation != 3)
+              car.orientation++;
+            else
+              car.orientation = 0;
           }
           else if (orientAction == 3) {
             /* TODO - MOTOR CONTROL */
             // Turn the car around (180 degrees)
+            Serial.println("\nTurning the car around 180 degrees");
+            if (car.orientation > 1)
+              car.orientation -= 2;
+            else
+              car.orientation += 2;
           }
         }
       }
@@ -281,6 +348,34 @@ void loop() {
       case 3: // left
         Serial.print("'LEFT'\n");
         car.col--;
+        break;
+      case 4:
+        Serial.print("Following curve from N2 to N5\n");
+        //stepCount = actionCount-1;
+        car.row = 2;
+        car.col = 7;
+        car.orientation = 2;
+        break;
+      case 5:
+        Serial.print("Following curve from N5 to N2\n");
+        //stepCount = actionCount-1;
+        car.row = 0;
+        car.col = 3;
+        car.orientation = 3;
+        break;
+      case 6:
+        Serial.print("Returning from curve from N2 to N5\n");
+        //stepCount = actionCount-1;
+        car.row = 0;
+        car.col = 3;
+        car.orientation = 3;
+        break;
+      case 7:
+        Serial.print("Returning from curve from N5 to N2\n");
+        // stepCount = actionCount-1;
+        car.row = 2;
+        car.col = 7;
+        car.orientation = 2;
         break;
     }
 
