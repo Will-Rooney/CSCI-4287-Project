@@ -31,7 +31,6 @@ extern "C" {
 #include "ArduinoMotorShieldR3.h"
 #include "dstar.h"
 
-#define ledPin 13
 
 /**
     Set this define to 1 to run the sensor/motor checks
@@ -45,17 +44,17 @@ extern "C" {
 
 #define ledPin 13
 #define TCAADDR  0x70    //  multiplexer 
-#define FRONT    0x40
-#define LEFT     0x00
-#define RIGHT    0x20
+//#define FRONT    0x40
+#define LEFT     0x20
+#define RIGHT    0x70
 #define IMU_ADDR 0x90
 
 #define MAX_I2C_INPUTS 7
-#define TRIGGER_PIN    12
-#define ECHO_PIN       11
+#define TRIGGER_PIN    5
+#define ECHO_PIN       6
 #define MAX_DISTANCE   200 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
 
-Adafruit_VL53L0X front = Adafruit_VL53L0X();
+//Adafruit_VL53L0X front = Adafruit_VL53L0X();
 Adafruit_VL6180X leftside = Adafruit_VL6180X();
 Adafruit_VL6180X rightside = Adafruit_VL6180X();
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);   // NewPing setup of pins and maximum distance.
@@ -87,34 +86,38 @@ struct Vehicle car;
 byte getReorientAct();
 
 void setup() {
+  Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
+  Serial.println("Init");
   /* Path Init */
   search.init();
   search.computeShortestPath();
-
+  Serial.println("Path Init complete");
   /* Virtual Car Stat Init */
   car.row = 0;
   car.col = 0;
   car.orientation = 1; // RIGHT
 
   /* Sensor & Other Init */
-  Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
 
   // Initialize the laser sensors
-  tcaselect(FRONT);
+  /*tcaselect(4);
+   Serial.println("Tcase select 4");
   if (!front.begin()) {
     Serial.println("VL53L0X Not Detected");
-  }
+  }*/
   tcaselect(LEFT);
+  Serial.println("Tcase select 0");
   if (!leftside.begin()) {
     Serial.println("Left VL6180X Not Detected");
   }
   tcaselect(RIGHT);
+  Serial.println("Tcase select 2");
   if (!rightside.begin()) {
     Serial.println("Right VL6180X Not Detected");
   }
   //  Initialize the Motor Shield
   md.init();
-
+  Serial.println("Sensor Init complete");
   pinMode(ledPin, OUTPUT);
 }
 
@@ -124,8 +127,11 @@ void loop() {
   if ( TEST_COMPONENTS ) {
     Serial.print("Testing Sensors: ");
     testUltrasonic();
+    delay(500);
     testLasers();
-    testMotors();
+    delay(500);
+    //testMotors();
+    delay(500);
     //   testIMU();
   }
   else if (GOAL) { // GOAL REACHED
@@ -359,7 +365,7 @@ void testUltrasonic() {
   for ( int i = 1; i < 20; i++ )
   {
     delay(50);                     // Wait 50ms between pings (about 20 pings/sec). 29ms should be the shortest delay between pings.
-    Serial.print("Ping: ");
+    Serial.print("Ultrasonic: ");
     Serial.print(sonar.ping_cm()); // Send ping, get distance in cm and print result (0 = outside set distance range)
     Serial.println("cm");
     delay(100);
@@ -373,19 +379,19 @@ void testLasers() {
   float luxright;
   int i = 0;
 
-  tcaselect( FRONT );
+  /*tcaselect( 4 );
   for ( int i = 1; i < 20; i++ )
   {
     front.rangingTest(&measure, false);
     if (measure.RangeStatus != 4) {
-      Serial.print("Distance (mm): ");
+      Serial.print("Front laser Distance (mm): ");
       Serial.println(measure.RangeMilliMeter);
     }
     else {
       Serial.println("Out Of Range");
     }
     delay(50);
-  }  // end for
+  }  // end for*/
 
   tcaselect( LEFT );
   for ( int i = 1; i < 20; i++ )
@@ -399,6 +405,8 @@ void testLasers() {
       Serial.print("Left Range: ");
       Serial.println(range1);
     }
+    else
+      Serial.println("Left Laser Error!");
     delay(50);
   }  // end for
 
@@ -414,6 +422,8 @@ void testLasers() {
       Serial.print("Right Range: ");
       Serial.println(range2);
     }
+    else
+      Serial.println("Right Laser Error!");
     delay(50);
   }  // end for
 
