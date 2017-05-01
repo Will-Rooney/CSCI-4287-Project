@@ -36,7 +36,7 @@ extern "C" {
     Set this define to 1 to run the sensor/motor checks
                        0 to skip
 */
-#define TEST_COMPONENTS 1
+#define TEST_COMPONENTS 0
 
 /**
     Constants for sensor addresses and pin assignments
@@ -82,13 +82,14 @@ bool OBSTACLE = false;        // Did we detect an obstacle?
 bool ACTION_COMPLETE = true;  // Are we ready for a new action?
 
 struct Vehicle car;
+byte step = 0;
 
 byte getReorientAct();
 
 void setup() {
   while (!Serial);
   delay(1000);
-  
+
   Wire.begin();
   Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
   Serial.println("Init");
@@ -105,10 +106,10 @@ void setup() {
 
   // Initialize the laser sensors
   /*tcaselect(4);
-   Serial.println("Tcase select 4");
-  if (!front.begin()) {
+    Serial.println("Tcase select 4");
+    if (!front.begin()) {
     Serial.println("VL53L0X Not Detected");
-  }*/
+    }*/
   tcaselect(2);
   Serial.println("Tcase select 0");
   if (!leftside.begin()) {
@@ -152,12 +153,12 @@ void loop() {
   }
   else {
     /* MAIN */
+    //md.setM1Speed(0); // LEFT
+    //md.setM2Speed(0); // RIGHT
+    //delay(500);
 
-    /* IF READY FOR NEXT ACTION */
-    /* USE TIME and/or IMU data to determine if we've moved one square */
-    // If so then update car's position
-    /* USE TIME and/or IMU data to determine if we've moved a total of 'actionCount' squares */
-    // If so then ACTION_COMPLETE = true
+    if (step == actionCount)
+      ACTION_COMPLETE = true;
 
     if (ACTION_COMPLETE) {
       /* If we have finished performing the action - Are we at the goal? */
@@ -173,6 +174,12 @@ void loop() {
         FAIL = true;
         return;
       }
+      step = 0;
+      Serial.print("Action: ");
+      Serial.print(action);
+      Serial.print(" | Action count: ");
+      Serial.print(actionCount);
+      Serial.println();
     }
     /* REORIENT CAR FOR ACTION - MOTOR CONTROL - TODO */
     orientAction = getReorientAct();
@@ -181,7 +188,9 @@ void loop() {
       if (orientAction == 1) {
         /* TODO - MOTOR CONTROL */
         // turn the car 90 degrees counter-clockwise
-
+        md.setM1Speed(400); // LEFT
+        md.setM2Speed(-400); // RIGHT
+        delay(1000);
         /* Update Virtual car orientation */
         if (car.orientation != 0)
           car.orientation--;
@@ -191,7 +200,9 @@ void loop() {
       else if (orientAction == 2) {
         /* TODO - MOTOR CONTROL */
         // turn the car 90 degrees clockwise
-
+        md.setM1Speed(-400); // LEFT
+        md.setM2Speed(400); // RIGHT
+        delay(1000);
         /* Update Virtual car orientation */
         if (car.orientation != 3)
           car.orientation++;
@@ -201,7 +212,9 @@ void loop() {
       else if (orientAction == 3) {
         /* TODO - MOTOR CONTROL */
         // Turn the car around (180 degrees)
-
+        md.setM1Speed(-400); // LEFT
+        md.setM2Speed(400); // RIGHT
+        delay(2000);
         /* Update Virtual car orientation */
         if (car.orientation > 1)
           car.orientation -= 2;
@@ -213,13 +226,133 @@ void loop() {
     }
   }
 
-  /* MOTOR CONTROL - Control motors to start performing the action */
   /* GATHER SENSOR DATA */
   /* CHECK FOR OBSTACLES */
-  /* CHECK IF WE NEED TO RECENTER CAR - MOTOR CONTROL */
+  float ultra_dist = sonar.ping_cm();
+  if (ultra_dist < 30) {
+    OBSTACLE = true;
+  }
 
-  /* Obstacle detected? */
-  if (OBSTACLE) {
+  tcaselect( LEFT );
+  uint8_t range_left = leftside.readRange();
+  uint8_t status1 = leftside.readRangeStatus();
+  if (status1 == VL6180X_ERROR_NONE) {
+    Serial.print("Left Range: ");
+    Serial.println(range_left);
+    if (range_left < 200) {
+      // MOTOR CONTROL - RECENTER RIGHT
+      Serial.println("Danger of hitting left wall!");
+      // TODO
+    }
+  }
+  else
+    Serial.println("Left Laser Error!");
+  delay(50);
+
+  tcaselect( RIGHT );
+  uint8_t range_right = rightside.readRange();
+  uint8_t status2 = rightside.readRangeStatus();
+  if (status2 == VL6180X_ERROR_NONE) {
+    Serial.print("Right Range: ");
+    Serial.println(range_right);
+    if (range_right < 200) {
+      // MOTOR CONTROL - RECENTER RIGHT
+      Serial.println("Danger of hitting left wall!");
+      // TODO
+    }
+  }
+  else
+    Serial.println("Right Laser Error!");
+  delay(50);
+
+  if (!OBSTACLE) {
+    /* MOTOR CONTROL - Control motors to start performing the action */
+    if (action < 4) {
+      // move car forward one square
+      md.setM1Speed(-400); // LEFT
+      md.setM2Speed(-400); // RIGHT
+      delay(2000);
+      // verify move with sensor data
+      step++;
+    } else if (action == 4) {
+      // TODO motor control
+      // Moving from node #2 to node #5
+      // Car's current orientation is already at "RIGHT"
+      // verify action complete with sensor data
+
+      // update car's position
+      car.row = 2;
+      car.col = 7;
+      car.orientation = 3; // LEFT
+      ACTION_COMPLETE = true;
+      return;
+    } else if (action == 5) {
+      // TODO motor control
+      // Moving from node #5 to node #2
+      / Car's current orientation is already at "UP"
+      // verify action complete with sensor data
+
+      // update car's position
+      car.row = 0;
+      car.col = 3;
+      car.orientation = 3; // LEFT
+      ACTION_COMPLETE = true;
+      return;
+    } else if (action == 6) {
+      // Turn the car around (180 degrees)
+      md.setM1Speed(-400); // LEFT
+      md.setM2Speed(400); // RIGHT
+      delay(2000);
+
+      // TODO motor control
+      // Moving from node #2 to node #5 blocked - return to node 2
+      // move to node 2
+      // verify action complete with sensor data
+
+      // update car's position
+      car.row = 0;
+      car.col = 3;
+      car.orientation = 3; // LEFT
+      ACTION_COMPLETE = true;
+      return;
+    } else if (action == 7) {
+      // Turn the car around (180 degrees)
+      md.setM1Speed(-400); // LEFT
+      md.setM2Speed(400); // RIGHT
+      delay(2000);
+
+      // TODO motor control
+      // Moving from node #5 to node #2 blocked - return to node 5
+      // Move to node 5
+      // verify action complete with sensor data
+
+      // update car's position
+      car.row = 2;
+      car.col = 7;
+      car.orientation = 2; // DOWN
+      ACTION_COMPLETE = true;
+      return;
+    }
+
+    // Update car position
+    if (action < 4) {
+      switch (car.orientation) {
+        case 0:
+          car.row--;
+          break;
+        case 1:
+          car.col++;
+          break;
+        case 2:
+          car.row++;
+          break;
+        case 3:
+          car.col--;
+          break;
+      }
+    }
+  }
+  else {
     /* recomputeShortestPath(byte row, byte col, byte &action, byte &actionCount)
         pre:
           (row, col) == Cars current position
@@ -233,6 +366,7 @@ void loop() {
             We do not need to return to the previous node, a new action will be retreived
             at the beginning of the loop()
     */
+    OBSTACLE = false;
     search.recomputeShortestPath(car.row, car.col, action, actionCount);
     /* Check if we need to return to the previous node after recomputing the path */
     if (actionCount == 0) // We did move from the previous node, therefore we do not need to return
@@ -246,7 +380,9 @@ void loop() {
         if (orientAction == 1) {
           /* TODO - MOTOR CONTROL */
           // turn the car 90 degrees counter-clockwise
-
+          md.setM1Speed(400); // LEFT
+          md.setM2Speed(-400); // RIGHT
+          delay(1000);
           /* Update Virtual car orientation */
           if (car.orientation != 0)
             car.orientation--;
@@ -256,7 +392,9 @@ void loop() {
         else if (orientAction == 2) {
           /* TODO - MOTOR CONTROL */
           // turn the car 90 degrees clockwise
-
+          md.setM1Speed(-400); // LEFT
+          md.setM2Speed(400); // RIGHT
+          delay(1000);
           /* Update Virtual car orientation */
           if (car.orientation != 3)
             car.orientation++;
@@ -266,7 +404,9 @@ void loop() {
         else if (orientAction == 3) {
           /* TODO - MOTOR CONTROL */
           // Turn the car around (180 degrees)
-
+          md.setM1Speed(-400); // LEFT
+          md.setM2Speed(400); // RIGHT
+          delay(2000);
           /* Update Virtual car orientation */
           if (car.orientation > 1)
             car.orientation -= 2;
@@ -384,8 +524,8 @@ void testLasers() {
   int i = 0;
 
   /*tcaselect( 4 );
-  for ( int i = 1; i < 20; i++ )
-  {
+    for ( int i = 1; i < 20; i++ )
+    {
     front.rangingTest(&measure, false);
     if (measure.RangeStatus != 4) {
       Serial.print("Front laser Distance (mm): ");
@@ -395,7 +535,7 @@ void testLasers() {
       Serial.println("Out Of Range");
     }
     delay(50);
-  }  // end for*/
+    }  // end for*/
 
   tcaselect( LEFT );
   for ( int i = 1; i < 20; i++ )
