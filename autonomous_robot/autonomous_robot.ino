@@ -86,6 +86,10 @@ struct Vehicle car;
 byte getReorientAct();
 
 void setup() {
+  while (!Serial);
+  delay(1000);
+  
+  Wire.begin();
   Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
   Serial.println("Init");
   /* Path Init */
@@ -105,12 +109,12 @@ void setup() {
   if (!front.begin()) {
     Serial.println("VL53L0X Not Detected");
   }*/
-  tcaselect(LEFT);
+  tcaselect(2);
   Serial.println("Tcase select 0");
   if (!leftside.begin()) {
     Serial.println("Left VL6180X Not Detected");
   }
-  tcaselect(RIGHT);
+  tcaselect(7);
   Serial.println("Tcase select 2");
   if (!rightside.begin()) {
     Serial.println("Right VL6180X Not Detected");
@@ -130,7 +134,7 @@ void loop() {
     delay(500);
     testLasers();
     delay(500);
-    //testMotors();
+    testMotors();
     delay(500);
     //   testIMU();
   }
