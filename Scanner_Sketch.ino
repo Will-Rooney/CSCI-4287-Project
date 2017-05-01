@@ -32,7 +32,7 @@ void setup() {
       if(addr == TCAADDR) continue;
 
       uint8_t data;
-      if (!twi_writeTo(addr. &data, 0, 1, 1)){
+      if (!twi_writeTo(addr, &data, 0, 1, 1)){
         Serial.print("Found I2C 0x");
         Serial.println(addr, HEX);
       }
