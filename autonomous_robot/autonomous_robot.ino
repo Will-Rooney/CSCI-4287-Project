@@ -38,11 +38,6 @@ extern "C" {
                      0 to skip
 *********************************************************/
 #define TEST_COMPONENTS 0
-/********************************************************
-  TEST_COMPONENTS:   1 to test moving fron Node 2 to Node 5
-                     0 to skip
-*********************************************************/
-#define TEST_CURVE 1
 
 /* LED STATUS PINS */
 #define failPin 48
@@ -50,16 +45,22 @@ extern "C" {
 #define bluePin 52
 
 /* MOTOR CONTROL DELAY TIMES (MS) */
-#define TURN_DELAY 350
-#define TURN_AROUND_DELAY 700
-#define FWD_DELAY 700
+#define TURN_DELAY 450
+#define TURN_AROUND_DELAY 900
+#define FWD_DELAY 600
 
 /* MOTOR SHIELD */
 ArduinoMotorShieldR3 md;
 
+/* MOTOR SPEEDS */
+#define MTRSPD_HIGH 350
+#define MTRSPD_MED 200
+#define MTRSPD_LOW 100
+
 /* Obstacle detection thresholds */
 #define OBSTC_ULTRA_DIST 30 // cm
 #define OBSTC_LASER_DIST 30 // mm
+#define WALL_THRESHOLD 45 // mm
 
 /* MULTIPLEXER DEFINITIONS FOR LASER SENSORS */
 #define TCAADDR  0x70     // multiplexer 
@@ -100,19 +101,21 @@ byte actionCount = BYTE_INF;  // the number of times the action must be taken (e
 bool FAIL = false;            // is the goal unreachable?
 bool GOAL = false;            // have we reached the goal?
 bool OBSTACLE = false;        // Did we detect an obstacle?
-bool ACTION_COMPLETE = false;  // Are we ready for a new action?
+bool ACTION_COMPLETE = true;  // Are we ready for a new action?
 struct Vehicle car;           // Keep track of perceived orientation and position
 byte step = 0;                // How many steps have we taken since receiving the last action
 
 /**/
 byte getReorientAct();
 void setMotorDir();
+void setMotorDirRev();
 void reorientAct();
 uint8_t getLaserRngLeft();
 uint8_t getLaserRngRight();
 //uint8_t getLaserRngFront();
 uint16_t getLaserRngFront();
 String actionToStr();
+void performAct();
 void tcaselect(uint8_t i);
 void initIMU();
 
@@ -179,37 +182,17 @@ void setup() {
 
 void loop() {
   //delay(50);                     // Wait 50ms between pings (about 20 pings/sec). 29ms should be the shortest delay between pings.
-  if (TEST_CURVE) {
-    if (ACTION_COMPLETE) {
-      md.setM1Speed(0); // LEFT
-      md.setM2Speed(0); // RIGHT
-      digitalWrite(goalPin, HIGH);
-      delay(50);
-      digitalWrite(goalPin, LOW);
-      delay(50);
-    }
-    else if (!OBSTACLE) {
-      action = 4;
-      //action = 1;
-      performAct();
-      // if (!OBSTACLE)
-      //   ACTION_COMPLETE = true;
-    }
-    else if (OBSTACLE) {
-      md.setM1Speed(0); // LEFT
-      md.setM2Speed(0); // RIGHT
-      digitalWrite(failPin, HIGH);
-      delay(50);
-      digitalWrite(failPin, LOW);
-      delay(50);
-    }
-  }
-  else if ( TEST_COMPONENTS ) {
-    Serial1.println("Test Components");
-    testUltrasonic();
-    delay(500);
-    testLasers();
-    delay(500);
+  if ( TEST_COMPONENTS ) {
+    //Serial1.println("Test Components");
+    //testTurns();
+    //Serial1.println("Test Curve");
+    //testCurve();
+    //Serial1.println("Test Forward Action");
+    //testFwdAct();
+    //testUltrasonic();
+    //delay(500);
+    //testLasers();
+    //delay(500);
     //testMotors();
     //delay(500);
     //testIMU();
@@ -236,8 +219,8 @@ void loop() {
   else {
     digitalWrite(bluePin, HIGH);
     /* MAIN */
-    if (step == actionCount)
-      ACTION_COMPLETE = true;
+    //if (step == actionCount)
+    //ACTION_COMPLETE = true;
 
     if (ACTION_COMPLETE) {
       Serial.print("Virtual Car Stats: \n\trow = ");
@@ -268,6 +251,14 @@ void loop() {
       Serial1.print(" | Action count: ");
       Serial1.print(actionCount);
       Serial1.print("\n\n");
+      Serial1.print("Available Acts:\n\tUP: ");
+      Serial1.println(availActions[0]);
+      Serial1.print("\tRIGHT: ");
+      Serial1.println(availActions[1]);
+      Serial1.print("\DOWN: ");
+      Serial1.println(availActions[2]);
+      Serial1.print("\LEFT: ");
+      Serial1.println(availActions[3]);
     }
 
     /* REORIENT CAR FOR ACTION */
@@ -277,17 +268,17 @@ void loop() {
     /* CHECK FOR OBSTACLES */
     md.setM1Speed(0); // LEFT
     md.setM2Speed(0); // RIGHT
-    float ultra_dist = sonar.ping_cm();
+    //float ultra_dist = sonar.ping_cm();
     //uint8_t front_range = getLaserRngFront();
     uint16_t front_range = getLaserRngFront();
     // uint8_t front_range = 50;
-    while (ultra_dist < 4) {
+    /*while (ultra_dist < 4) {
       //check again
       delay(30);
       ultra_dist = sonar.ping_cm();
-    }
+      }*/
 
-    if (ultra_dist < OBSTC_ULTRA_DIST || front_range < OBSTC_LASER_DIST) {
+    if (front_range <= 100) {
       OBSTACLE = true;
     }
 
@@ -321,15 +312,16 @@ void loop() {
         Serial1.print("Cannot reach goal!");
         return;
       }
+      action = 8;
       /* Check if we need to return to the previous node after recomputing the path */
-      if (actionCount == 0) // We did move from the previous node, therefore we do not need to return
-        ACTION_COMPLETE = true;
-      else { // We started to move to the next node and were blocked, therefore we DO need to return to previous node
+      //if (actionCount == 0) // We did move from the previous node, therefore we do not need to return
+        //ACTION_COMPLETE = true;
+      //else { // We started to move to the next node and were blocked, therefore we DO need to return to previous node
         ACTION_COMPLETE = false;
         // Reorient the car
         //Serial1.println("Reorientation commense");
-        reorientAct();
-      }
+        //reorientAct();
+      //}
       return;
     }
   }
@@ -409,34 +401,72 @@ void setMotorDir() {
   uint8_t range_right = getLaserRngRight();
   //delay(15);
 
-  if (range_left < 40 || range_right < 40) {
+  if (range_left < WALL_THRESHOLD || range_right < WALL_THRESHOLD) {
     float diff = range_right - range_left;
-    Serial1.println(diff);
+    //Serial1.println(diff);
     if (diff > 15) {
       Serial1.println("Danger of hitting left wall!");
       // slow down right motor
-      md.setM1Speed(-100); // LEFT
-      md.setM2Speed(-400); // RIGHT
+      md.setM1Speed(-MTRSPD_MED); // RIGHT
+      md.setM2Speed(-MTRSPD_HIGH); // LEFT
       delay(30);
     }
     else if (diff < -15) {
       Serial1.println("Danger of hitting right wall!");
       // slow down left motor
-      md.setM1Speed(-400); // LEFT
-      md.setM2Speed(-100); // RIGHT
+      md.setM1Speed(-MTRSPD_HIGH); // RIGHT
+      md.setM2Speed(-MTRSPD_MED); // LEFT
       delay(30);
     }
     else {
       // equalize motor speed
-      md.setM1Speed(-400); // LEFT
-      md.setM2Speed(-400); // RIGHT
+      md.setM1Speed(-MTRSPD_HIGH); // RIGHT
+      md.setM2Speed(-MTRSPD_HIGH); // LEFT
       delay(30);
     }
   }
   else {
     // equalize motor speed
-    md.setM1Speed(-400); // LEFT
-    md.setM2Speed(-400); // RIGHT
+    md.setM1Speed(-MTRSPD_HIGH); // RIGHT
+    md.setM2Speed(-MTRSPD_HIGH); // LEFT
+    delay(30);
+  }
+}
+
+void setMotorDirRev() {
+  uint8_t range_left = getLaserRngLeft();
+  delay(30);
+  uint8_t range_right = getLaserRngRight();
+  //delay(15);
+
+  if (range_left < WALL_THRESHOLD || range_right < WALL_THRESHOLD) {
+    float diff = range_right - range_left;
+    //Serial1.println(diff);
+    if (diff > 15) {
+      Serial1.println("Danger of hitting left wall!");
+      // slow down right motor
+      md.setM1Speed(MTRSPD_MED); // RIGHT
+      md.setM2Speed(MTRSPD_HIGH); // LEFT
+      delay(30);
+    }
+    else if (diff < -15) {
+      Serial1.println("Danger of hitting right wall!");
+      // slow down left motor
+      md.setM1Speed(MTRSPD_HIGH); // RIGHT
+      md.setM2Speed(MTRSPD_MED); // LEFT
+      delay(30);
+    }
+    else {
+      // equalize motor speed
+      md.setM1Speed(MTRSPD_HIGH); // RIGHT
+      md.setM2Speed(MTRSPD_HIGH); // LEFT
+      delay(30);
+    }
+  }
+  else {
+    // equalize motor speed
+    md.setM1Speed(MTRSPD_HIGH); // RIGHT
+    md.setM2Speed(MTRSPD_HIGH); // LEFT
     delay(30);
   }
 }
@@ -451,8 +481,8 @@ void reorientAct() {
     if (orientAction == 1) {
       /* TODO - MOTOR CONTROL */
       // turn the car 90 degrees counter-clockwise
-      md.setM1Speed(-400); // LEFT
-      md.setM2Speed(400); // RIGHT
+      md.setM1Speed(-MTRSPD_HIGH); // RIGHT
+      md.setM2Speed(MTRSPD_HIGH); // LEFT
       delay(TURN_DELAY);
 
       /* IMU - GYRO */
@@ -472,8 +502,8 @@ void reorientAct() {
     else if (orientAction == 2) {
       /* TODO - MOTOR CONTROL */
       // turn the car 90 degrees clockwise
-      md.setM1Speed(400); // LEFT
-      md.setM2Speed(-400); // RIGHT
+      md.setM1Speed(MTRSPD_HIGH); // RIGHT
+      md.setM2Speed(-MTRSPD_HIGH); // LEFT
       delay(TURN_DELAY);
 
       /* IMU - GYRO */
@@ -505,24 +535,24 @@ void reorientAct() {
       Serial1.println(range_diff);
 
       if (range_diff > 20) {
-        md.setM1Speed(-400); // LEFT
+        md.setM1Speed(-MTRSPD_HIGH);
         md.setM2Speed(0); // RIGHT
         delay(TURN_AROUND_DELAY / 2);
-        md.setM1Speed(-400); // LEFT
-        md.setM2Speed(400); // RIGHT
+        md.setM1Speed(-MTRSPD_HIGH);
+        md.setM2Speed(MTRSPD_HIGH);
         delay(TURN_AROUND_DELAY / 2);
       }
       else if (range_diff < -20) {
         md.setM1Speed(0); // LEFT
-        md.setM2Speed(-400); // RIGHT
+        md.setM2Speed(-MTRSPD_HIGH);
         delay(TURN_AROUND_DELAY / 2);
-        md.setM1Speed(400); // LEFT
-        md.setM2Speed(-400); // RIGHT
+        md.setM1Speed(MTRSPD_HIGH);
+        md.setM2Speed(-MTRSPD_HIGH);
         delay(TURN_AROUND_DELAY / 2);
       }
       else {
-        md.setM1Speed(-400); // LEFT
-        md.setM2Speed(400); // RIGHT
+        md.setM1Speed(-MTRSPD_HIGH);
+        md.setM2Speed(MTRSPD_HIGH);
         delay(TURN_AROUND_DELAY);
       }
 
@@ -547,70 +577,254 @@ void performAct() {
   /* MOTOR CONTROL - Control motors to start performing the action */
   // Maybe check FRONT laser as we make the move; inbetween fragments
   uint16_t front_range;
-  md.setM1Speed(-400); // LEFT
-  md.setM2Speed(-400); // RIGHT
+  uint8_t left_range;
+  uint8_t right_range;
+  uint8_t maxRange = 175;
+  md.setM1Speed(-MTRSPD_HIGH); // LEFT
+  md.setM2Speed(-MTRSPD_HIGH); // RIGHT
   if (action < 4) {
-    float ultra_dist_old = sonar.ping_cm();
-    float ultra_dist = ultra_dist_old;
+    //float ultra_dist_old = sonar.ping_cm();
+    //float ultra_dist = ultra_dist_old;
     // move car forward one square
     unsigned int i_delay;
-    bool INTERSECTION = false;
-    for (i_delay = 0; i_delay <= FWD_DELAY; i_delay += 50) {
-      setMotorDir(); // 30 ms delay inisde
-      ultra_dist = sonar.ping_cm();
-      if ((ultra_dist_old - ultra_dist) > 25) {
-        return;
+    bool INTERSECTION = true;
+    md.setM1Speed(-MTRSPD_HIGH); // LEFT
+    md.setM2Speed(-MTRSPD_HIGH); // RIGHT
+    if (car.row==5 && car.col == 9) {
+      for (i_delay = 0; i_delay < 1000; i_delay += 50) {
+        setMotorDir();
+        delay(20);
       }
-      front_range = getLaserRngFront(); // Front laser uses 20 ms sample
-      if (step == actionCount - 1) {
-        if (front_range < 50) // action complete
-          break;
-        if (availActions[0]) {
-          switch (car.orientation) {
-            case 0:
-              break;
-            case 1:
-              /*uint8_t left_range = getLaserRngLeft();
-              if (left_range > 160) {
-                setMotorDir();
-                delay(200);
-              }
-              INTERSECTION = true;*/
-              break;
-            case 2:
+    }
+    while (car.col != 9) {
+      if (availActions[0]) {
+        switch (car.orientation) {
+          case 1: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
             break;
-          }
+          case 3:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
         }
       }
-      if (INTERSECTION)
+      if (availActions[1]) {
+        switch (car.orientation) {
+          case 2: // GOING DOWN
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
+          case 0:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
+        }
+      }
+      if (availActions[2]) {
+        switch (car.orientation) {
+          case 3: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
+          case 1:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
+        }
+      }
+      if (availActions[3]) {
+        switch (car.orientation) {
+          case 0: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
+          case 2:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(50);
+            }
+            else {
+              INTERSECTION = false;
+            }
+            break;
+        }
+      }
+      if (!INTERSECTION) {
+        delay(500);
         break;
+      }
+    }
+    //for (i_delay = 0; i_delay <= FWD_DELAY; i_delay += 50) {
+    while (1) {
+      setMotorDir(); // 30 ms delay inisde
+      //ultra_dist = sonar.ping_cm();
+      //if ((ultra_dist_old - ultra_dist) > 25) {
+      //  return;
+      //}
+      //front_range = getLaserRngFront(); // Front laser uses 20 ms sample
+      front_range = getLaserRngFront();
+      if (car.row == 5 && car.col == 9) {
+        if (front_range < 50) // action complete
+          break;
+      }
       if (front_range < OBSTC_LASER_DIST) {
         OBSTACLE = true;
         // equalize motor speed
-        md.setM1Speed(400); // LEFT
-        md.setM2Speed(400); // RIGHT
-        i_delay += 50;
-        delay(i_delay);
+        md.setM1Speed(MTRSPD_HIGH); // LEFT
+        md.setM2Speed(MTRSPD_HIGH); // RIGHT
+        //i_delay += 50;
+        //delay(i_delay);
+        delay(500);
         return;
       }
-    }
 
+      if (availActions[0]) {
+        switch (car.orientation) {
+          case 1: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 3:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+      if (availActions[1]) {
+        switch (car.orientation) {
+          case 2: // GOING DOWN
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 0:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+      if (availActions[2]) {
+        switch (car.orientation) {
+          case 3: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 1:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+      if (availActions[3]) {
+        switch (car.orientation) {
+          case 0: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 2:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+
+      if (INTERSECTION) {
+        Serial1.println("Intersection detected");
+        break;
+      }
+
+    }
     // Update car position
     switch (car.orientation) {
       case 0:
-        car.row--;
+        car.row -= actionCount;
         break;
       case 1:
-        car.col++;
+        car.col += actionCount;
         break;
       case 2:
-        car.row++;
+        car.row += actionCount;
         break;
       case 3:
-        car.col--;
+        car.col -= actionCount;
         break;
     }
-    step++;
+    ACTION_COMPLETE = true;
   } else if (action == 4) {
     // Moving from node #2 to node #5
     // Car's current orientation is already at "RIGHT"
@@ -619,10 +833,16 @@ void performAct() {
     uint8_t range_right;
     //float ultra_dist;
     //while (ultra_dist == 0) {
-      //ultra_dist = sonar.ping_cm();
-      //delay(30);
+    //ultra_dist = sonar.ping_cm();
+    //delay(30);
     //}
-    delay(250); // Move into curve
+    md.setM1Speed(-MTRSPD_HIGH); // LEFT
+    md.setM2Speed(-MTRSPD_HIGH); // RIGHT
+    range_right = getLaserRngRight();
+    while (range_right > 200) {
+      delay(50);
+      range_right = getLaserRngRight();
+    }
     while (1) {
       //delay(250);
       setMotorDir();
@@ -641,11 +861,11 @@ void performAct() {
       //delay(500);
       // Realy need to check (Orientation Change > 90) from gyro (degrees)
       if (range_right > 200) {
-        md.setM1Speed(-100); // LEFT
-        md.setM2Speed(-400); // RIGHT
-        delay(250); // move forward a bit into node
-        md.setM1Speed(-400); // LEFT
-        md.setM2Speed(-400); // RIGHT
+        md.setM1Speed(-MTRSPD_LOW); // LEFT
+        md.setM2Speed(-MTRSPD_HIGH); // RIGHT
+        delay(500); // move forward a bit into node
+        md.setM1Speed(-MTRSPD_HIGH); // LEFT
+        md.setM2Speed(-MTRSPD_HIGH); // RIGHT
         delay(250);
         ACTION_COMPLETE = true;
         break;
@@ -747,6 +967,105 @@ void performAct() {
     ACTION_COMPLETE = true;
     return;
   }
+  else if (action == 8) {
+    bool INTERSECTION = false;
+    md.setM1Speed(MTRSPD_HIGH); // LEFT
+    md.setM2Speed(MTRSPD_HIGH); // RIGHT
+    
+    //for (i_delay = 0; i_delay <= FWD_DELAY; i_delay += 50) {
+    while (1) {
+      setMotorDirRev(); // 30 ms delay inisde
+
+      if (availActions[0]) {
+        switch (car.orientation) {
+          case 1: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDirRev();
+              //delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 3:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDirRev();
+              //delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+      if (availActions[1]) {
+        switch (car.orientation) {
+          case 2: // GOING DOWN
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDirRev();
+              //delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 0:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDir();
+              //delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+      if (availActions[2]) {
+        switch (car.orientation) {
+          case 3: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDirRev();
+              //delay(200);
+              INTERSECTION = true;
+            }
+            break;
+          case 1:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDirRev();
+              //delay(200);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+      if (availActions[3]) {
+        switch (car.orientation) {
+          case 0: // GOING RIGHT
+            left_range = getLaserRngLeft();
+            if (left_range > maxRange) {
+              setMotorDirRev();
+              //delay(50);
+              INTERSECTION = true;
+            }
+            break;
+          case 2:
+            right_range = getLaserRngRight();
+            if (right_range > maxRange) {
+              setMotorDirRev();
+              //delay(50);
+              INTERSECTION = true;
+            }
+            break;
+        }
+      }
+
+      if (INTERSECTION) {
+        Serial1.println("Intersection detected");
+        delay(100);
+        break;
+      }
+      ACTION_COMPLETE = true;
+
+    }
+  }
 }
 
 uint8_t getLaserRngLeft() {
@@ -754,40 +1073,13 @@ uint8_t getLaserRngLeft() {
   uint8_t range = leftside.readRange();
   uint8_t status = leftside.readRangeStatus();
   if (status == VL6180X_ERROR_NONE) {
-    Serial1.print("Left Range: ");
-    Serial1.println(range);
+    //Serial1.print("Left Range: ");
+    //Serial1.println(range);
     return range;
   }
   else {
-    /*if  ((status >= VL6180X_ERROR_SYSERR_1) && (status <= VL6180X_ERROR_SYSERR_5)) {
-      Serial1.println("System error");
-      }
-      else if (status == VL6180X_ERROR_ECEFAIL) {
-      Serial1.println("ECE failure");
-      }
-      else if (status == VL6180X_ERROR_NOCONVERGE) {
-      Serial1.println("No convergence");
-      }
-      else if (status == VL6180X_ERROR_RANGEIGNORE) {
-      Serial1.println("Ignoring range");
-      }
-      else if (status == VL6180X_ERROR_SNR) {
-      Serial1.println("Signal / Noise error");
-      }
-      else if (status == VL6180X_ERROR_RAWUFLOW) {
-      Serial1.println("Raw reading underflow");
-      }
-      else if (status == VL6180X_ERROR_RAWOFLOW) {
-      Serial1.println("Raw reading overflow");
-      }
-      else if (status == VL6180X_ERROR_RANGEUFLOW) {
-      Serial1.println("Range reading underflow");
-      }
-      else if (status == VL6180X_ERROR_RANGEOFLOW) {
-      Serial1.println("Range reading overflow");
-      }
-      Serial1.println("Laser Left: unworthy data");*/
-    return 300;
+    //Serial1.println("Out of range");
+    return 250;
   }
 }
 
@@ -796,40 +1088,13 @@ uint8_t getLaserRngRight() {
   uint8_t range = rightside.readRange();
   uint8_t status = rightside.readRangeStatus();
   if (status == VL6180X_ERROR_NONE) {
-    Serial1.print("Right Range: ");
-    Serial1.println(range);
+    //Serial1.print("Right Range: ");
+    //Serial1.println(range);
     return range;
   }
   else {
-    /*if  ((status >= VL6180X_ERROR_SYSERR_1) && (status <= VL6180X_ERROR_SYSERR_5)) {
-      Serial1.println("System error");
-      }
-      else if (status == VL6180X_ERROR_ECEFAIL) {
-      Serial1.println("ECE failure");
-      }
-      else if (status == VL6180X_ERROR_NOCONVERGE) {
-      Serial1.println("No convergence");
-      }
-      else if (status == VL6180X_ERROR_RANGEIGNORE) {
-      Serial1.println("Ignoring range");
-      }
-      else if (status == VL6180X_ERROR_SNR) {
-      Serial1.println("Signal / Noise error");
-      }
-      else if (status == VL6180X_ERROR_RAWUFLOW) {
-      Serial1.println("Raw reading underflow");
-      }
-      else if (status == VL6180X_ERROR_RAWOFLOW) {
-      Serial1.println("Raw reading overflow");
-      }
-      else if (status == VL6180X_ERROR_RANGEUFLOW) {
-      Serial1.println("Range reading underflow");
-      }
-      else if (status == VL6180X_ERROR_RANGEOFLOW) {
-      Serial1.println("Range reading overflow");
-      }
-      Serial1.println("Laser Right: unworthy data");*/
-    return 255;
+    //Serial1.println("Out of range");
+    return 250;
   }
 }
 
@@ -878,8 +1143,88 @@ void tcaselect(uint8_t i) {
 }
 
 /**
-  Sensor test functions
+  Test functions
 */
+
+void testTurns() {
+  Serial1.println("Testing 90 degree turn left");
+  md.setM1Speed(-MTRSPD_HIGH); // RIGHT
+  md.setM2Speed(MTRSPD_HIGH); // LEFT
+  delay(TURN_DELAY);
+  md.setM1Speed(0); // RIGHT
+  md.setM2Speed(0); // LEFT
+  delay(2000);
+  
+  Serial1.println("Testing 90 degree turn right");
+  md.setM1Speed(MTRSPD_HIGH); // RIGHT
+  md.setM2Speed(-MTRSPD_HIGH); // LEFT
+  delay(TURN_DELAY);
+  md.setM1Speed(0); // RIGHT
+  md.setM2Speed(0); // LEFT
+  delay(2000);
+
+  Serial1.println("Testing 180 degree turn right");
+  md.setM1Speed(MTRSPD_HIGH); // RIGHT
+  md.setM2Speed(-MTRSPD_HIGH); // LEFT
+  delay(TURN_AROUND_DELAY);
+  md.setM1Speed(0); // RIGHT
+  md.setM2Speed(0); // LEFT
+  delay(2000);
+}
+void testCurve() {
+  ACTION_COMPLETE = false;
+  while (1) {
+    if (ACTION_COMPLETE) {
+      md.setM1Speed(0); // LEFT
+      md.setM2Speed(0); // RIGHT
+      digitalWrite(goalPin, HIGH);
+      delay(50);
+      digitalWrite(goalPin, LOW);
+      delay(50);
+    }
+    else if (!OBSTACLE) {
+      action = 4;
+      performAct();
+    }
+    else if (OBSTACLE) {
+      md.setM1Speed(0); // LEFT
+      md.setM2Speed(0); // RIGHT
+      digitalWrite(failPin, HIGH);
+      delay(50);
+      digitalWrite(failPin, LOW);
+      delay(50);
+    }
+  }
+}
+
+void testFwdAct() {
+  ACTION_COMPLETE = false;
+  while (1) {
+    if (ACTION_COMPLETE) {
+      md.setM1Speed(0); // LEFT
+      md.setM2Speed(0); // RIGHT
+      digitalWrite(goalPin, HIGH);
+      delay(50);
+      digitalWrite(goalPin, LOW);
+      delay(50);
+    }
+    else if (!OBSTACLE) {
+      action = 1;
+      performAct();
+      if (!OBSTACLE)
+        ACTION_COMPLETE = true;
+    }
+    else if (OBSTACLE) {
+      md.setM1Speed(0); // LEFT
+      md.setM2Speed(0); // RIGHT
+      digitalWrite(failPin, HIGH);
+      delay(50);
+      digitalWrite(failPin, LOW);
+      delay(50);
+    }
+  }
+}
+
 void testUltrasonic() {
 
   for ( int i = 1; i < 20; i++ )
