@@ -30,6 +30,7 @@ class DStar {
     byte getNodeIndex(byte row, byte col);
     void getNextAction(byte& action, byte& actionCount);
     void backtrack(byte row, byte col, byte& action, byte& actionCount);
+    void getActions(bool *availActs);
 
 
   private:

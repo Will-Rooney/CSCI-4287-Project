@@ -450,6 +450,27 @@ void DStar::getNextAction(byte& action, byte& actionCount) { // Find the cheapes
   }
 }
 
+void DStar::getActions(bool *availActs) {
+  if (nMap[start].neighbors[0])
+    availActs[0] = true;
+  else
+    availActs[0] = false;
+
+  if (nMap[start].neighbors[1])
+    availActs[1] = true;
+  else
+    availActs[1] = false;
+
+  if (nMap[start].neighbors[2])
+    availActs[2] = true;
+  else
+    availActs[2] = false;
+
+  if (nMap[start].neighbors[3])
+    availActs[3] = true;
+  else
+    availActs[3] = false;
+}
 void DStar::backtrack(byte row, byte col, byte& action, byte& actionCount) {
   byte offset = 0, node = BYTE_INF;
 
@@ -506,7 +527,7 @@ void DStar::initNodes() {
 
   // Node #2
   nMap[1].setPos(0, 3);
-  nMap[1].setEdgeCosts(INF, 5, 2, 3);
+  nMap[1].setEdgeCosts(INF, 8, 2, 3);
   nMap[1].setNeighbors(NULL, &nMap[4], &nMap[3], &nMap[0]);
 
   // Node #3
@@ -521,7 +542,7 @@ void DStar::initNodes() {
 
   // Node #5
   nMap[4].setPos(2, 7);
-  nMap[4].setEdgeCosts(5, INF, 2, 4);
+  nMap[4].setEdgeCosts(8, INF, 2, 4);
   nMap[4].setNeighbors(&nMap[1], NULL, &nMap[8], &nMap[3]);
 
   // Node #6
