@@ -1027,9 +1027,8 @@ void performAct() {
         delay(100);
         break;
       }
-      ACTION_COMPLETE = true;
-
     }
+    ACTION_COMPLETE = true;
   }
 }
 
