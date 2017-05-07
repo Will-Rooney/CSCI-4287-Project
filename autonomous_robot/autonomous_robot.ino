@@ -103,7 +103,6 @@ bool GOAL = false;            // have we reached the goal?
 bool OBSTACLE = false;        // Did we detect an obstacle?
 bool ACTION_COMPLETE = true;  // Are we ready for a new action?
 struct Vehicle car;           // Keep track of perceived orientation and position
-byte step = 0;                // How many steps have we taken since receiving the last action
 
 /**/
 byte getReorientAct();
@@ -247,7 +246,6 @@ void loop() {
         return;
       }
       ACTION_COMPLETE = false;
-      step = 0;
       Serial1.print("\nNext Action: ");
       Serial1.print(actionToStr());
       Serial1.print(" | Action count: ");
@@ -265,7 +263,9 @@ void loop() {
     delay(250);
     digitalWrite(TRIGGER_PIN, LOW);
     delayMicroseconds(2);
+    digitalWrite(TRIGGER_PIN, HIGH);
     delayMicroseconds(10);
+    digitalWrite(TRIGGER_PIN, LOW);
     long duration = pulseIn(ECHO_PIN, HIGH);
     long ultra_inches = duration / 74 / 2;
     uint16_t front_range = getLaserRngFront();
