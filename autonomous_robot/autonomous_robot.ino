@@ -31,6 +31,7 @@ extern "C" {
 #include "quaternionFilters.h"
 #include "ArduinoMotorShieldR3.h"
 #include "dstar.h"
+#include "Quaternion.h"
 
 
 /********************************************************
