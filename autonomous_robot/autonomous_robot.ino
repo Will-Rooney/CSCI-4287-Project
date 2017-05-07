@@ -124,6 +124,7 @@ void testUltrasonic();
 void testLasers();
 void testMotors();
 void testIMU();
+void testTurns();
 
 void setup() {
   Wire.begin();
@@ -138,6 +139,10 @@ void setup() {
   car.row = 0;
   car.col = 0;
   car.orientation = 2; // DOWN
+
+  /* Init Ultrasonic pins */
+  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(ECHO_PIN, OUTPUT);
 
   /* Initialize the laser sensors */
   tcaselect(FRONT);
@@ -219,9 +224,6 @@ void loop() {
   else {
     digitalWrite(bluePin, HIGH);
     /* MAIN */
-    //if (step == actionCount)
-    //ACTION_COMPLETE = true;
-
     if (ACTION_COMPLETE) {
       Serial.print("Virtual Car Stats: \n\trow = ");
       Serial.print(car.row);
@@ -251,14 +253,6 @@ void loop() {
       Serial1.print(" | Action count: ");
       Serial1.print(actionCount);
       Serial1.print("\n\n");
-      Serial1.print("Available Acts:\n\tUP: ");
-      Serial1.println(availActions[0]);
-      Serial1.print("\tRIGHT: ");
-      Serial1.println(availActions[1]);
-      Serial1.print("\DOWN: ");
-      Serial1.println(availActions[2]);
-      Serial1.print("\LEFT: ");
-      Serial1.println(availActions[3]);
     }
 
     /* REORIENT CAR FOR ACTION */
@@ -268,22 +262,20 @@ void loop() {
     /* CHECK FOR OBSTACLES */
     md.setM1Speed(0); // LEFT
     md.setM2Speed(0); // RIGHT
-    //float ultra_dist = sonar.ping_cm();
-    //uint8_t front_range = getLaserRngFront();
+    delay(250);
+    digitalWrite(TRIGGER_PIN, LOW);
+    delayMicroseconds(2);
+    delayMicroseconds(10);
+    long duration = pulseIn(ECHO_PIN, HIGH);
+    long ultra_inches = duration / 74 / 2;
     uint16_t front_range = getLaserRngFront();
-    // uint8_t front_range = 50;
-    /*while (ultra_dist < 4) {
-      //check again
-      delay(30);
-      ultra_dist = sonar.ping_cm();
-      }*/
-
-    if (front_range <= 100) {
+    uint8_t node_dist = 12 * (actionCount - 1); // Distance to next node in inches, minus a foot
+    if (front_range <= 100 || ultra_inches < node_dist) {
       OBSTACLE = true;
     }
 
     if (!OBSTACLE) { // No obstacle: move forward
-      performAct();
+      performAct(); // May still find an obstacle
     }
     if (OBSTACLE) { // Obstacle detected
       /* recomputeShortestPath(byte row, byte col, byte &action, byte &actionCount)
@@ -315,12 +307,12 @@ void loop() {
       action = 8;
       /* Check if we need to return to the previous node after recomputing the path */
       //if (actionCount == 0) // We did move from the previous node, therefore we do not need to return
-        //ACTION_COMPLETE = true;
+      //ACTION_COMPLETE = true;
       //else { // We started to move to the next node and were blocked, therefore we DO need to return to previous node
-        ACTION_COMPLETE = false;
-        // Reorient the car
-        //Serial1.println("Reorientation commense");
-        //reorientAct();
+      ACTION_COMPLETE = false;
+      // Reorient the car
+      //Serial1.println("Reorientation commense");
+      //reorientAct();
       //}
       return;
     }
@@ -397,9 +389,7 @@ byte getReorientAct() {
 
 void setMotorDir() {
   uint8_t range_left = getLaserRngLeft();
-  delay(30);
   uint8_t range_right = getLaserRngRight();
-  //delay(15);
 
   if (range_left < WALL_THRESHOLD || range_right < WALL_THRESHOLD) {
     float diff = range_right - range_left;
@@ -409,35 +399,30 @@ void setMotorDir() {
       // slow down right motor
       md.setM1Speed(-MTRSPD_MED); // RIGHT
       md.setM2Speed(-MTRSPD_HIGH); // LEFT
-      delay(30);
     }
     else if (diff < -15) {
       Serial1.println("Danger of hitting right wall!");
       // slow down left motor
       md.setM1Speed(-MTRSPD_HIGH); // RIGHT
       md.setM2Speed(-MTRSPD_MED); // LEFT
-      delay(30);
     }
     else {
       // equalize motor speed
       md.setM1Speed(-MTRSPD_HIGH); // RIGHT
       md.setM2Speed(-MTRSPD_HIGH); // LEFT
-      delay(30);
     }
   }
   else {
     // equalize motor speed
     md.setM1Speed(-MTRSPD_HIGH); // RIGHT
     md.setM2Speed(-MTRSPD_HIGH); // LEFT
-    delay(30);
   }
+  delay(30);
 }
 
 void setMotorDirRev() {
   uint8_t range_left = getLaserRngLeft();
-  delay(30);
   uint8_t range_right = getLaserRngRight();
-  //delay(15);
 
   if (range_left < WALL_THRESHOLD || range_right < WALL_THRESHOLD) {
     float diff = range_right - range_left;
@@ -447,28 +432,25 @@ void setMotorDirRev() {
       // slow down right motor
       md.setM1Speed(MTRSPD_MED); // RIGHT
       md.setM2Speed(MTRSPD_HIGH); // LEFT
-      delay(30);
     }
     else if (diff < -15) {
       Serial1.println("Danger of hitting right wall!");
       // slow down left motor
       md.setM1Speed(MTRSPD_HIGH); // RIGHT
       md.setM2Speed(MTRSPD_MED); // LEFT
-      delay(30);
     }
     else {
       // equalize motor speed
       md.setM1Speed(MTRSPD_HIGH); // RIGHT
       md.setM2Speed(MTRSPD_HIGH); // LEFT
-      delay(30);
     }
   }
   else {
     // equalize motor speed
     md.setM1Speed(MTRSPD_HIGH); // RIGHT
     md.setM2Speed(MTRSPD_HIGH); // LEFT
-    delay(30);
   }
+  delay(30);
 }
 
 void reorientAct() {
@@ -522,7 +504,6 @@ void reorientAct() {
         car.orientation = 0;
     }
     else if (orientAction == 3) {
-      /* TODO - MOTOR CONTROL */
       // Turn the car around (180 degrees)
       tcaselect( LEFT );
       uint8_t left_range = getLaserRngLeft();
@@ -588,9 +569,7 @@ void performAct() {
     // move car forward one square
     unsigned int i_delay;
     bool INTERSECTION = true;
-    md.setM1Speed(-MTRSPD_HIGH); // LEFT
-    md.setM2Speed(-MTRSPD_HIGH); // RIGHT
-    if (car.row==5 && car.col == 9) {
+    if (car.row == 5 && car.col == 9) {
       for (i_delay = 0; i_delay < 1000; i_delay += 50) {
         setMotorDir();
         delay(20);
@@ -701,10 +680,6 @@ void performAct() {
     //for (i_delay = 0; i_delay <= FWD_DELAY; i_delay += 50) {
     while (1) {
       setMotorDir(); // 30 ms delay inisde
-      //ultra_dist = sonar.ping_cm();
-      //if ((ultra_dist_old - ultra_dist) > 25) {
-      //  return;
-      //}
       //front_range = getLaserRngFront(); // Front laser uses 20 ms sample
       front_range = getLaserRngFront();
       if (car.row == 5 && car.col == 9) {
@@ -716,9 +691,6 @@ void performAct() {
         // equalize motor speed
         md.setM1Speed(MTRSPD_HIGH); // LEFT
         md.setM2Speed(MTRSPD_HIGH); // RIGHT
-        //i_delay += 50;
-        //delay(i_delay);
-        delay(500);
         return;
       }
 
@@ -831,13 +803,6 @@ void performAct() {
 
     // Record current orientation from gyro (degrees)
     uint8_t range_right;
-    //float ultra_dist;
-    //while (ultra_dist == 0) {
-    //ultra_dist = sonar.ping_cm();
-    //delay(30);
-    //}
-    md.setM1Speed(-MTRSPD_HIGH); // LEFT
-    md.setM2Speed(-MTRSPD_HIGH); // RIGHT
     range_right = getLaserRngRight();
     while (range_right > 200) {
       delay(50);
@@ -971,7 +936,7 @@ void performAct() {
     bool INTERSECTION = false;
     md.setM1Speed(MTRSPD_HIGH); // LEFT
     md.setM2Speed(MTRSPD_HIGH); // RIGHT
-    
+
     //for (i_delay = 0; i_delay <= FWD_DELAY; i_delay += 50) {
     while (1) {
       setMotorDirRev(); // 30 ms delay inisde
@@ -1101,12 +1066,6 @@ uint8_t getLaserRngRight() {
 uint16_t getLaserRngFront() {
   tcaselect( FRONT );
   uint16_t range = front.readRangeSingleMillimeters();
-  byte maxReads = 5;
-  byte readNum = 0;
-  /*while ((range = front.readRangeSingleMillimeters()) != 65535 || readNum == maxReads) {
-    readNum++;
-    Serial1.println("\nFront Laser readRange() timeout");
-    }*/
   return range;
 }
 
@@ -1154,7 +1113,7 @@ void testTurns() {
   md.setM1Speed(0); // RIGHT
   md.setM2Speed(0); // LEFT
   delay(2000);
-  
+
   Serial1.println("Testing 90 degree turn right");
   md.setM1Speed(MTRSPD_HIGH); // RIGHT
   md.setM2Speed(-MTRSPD_HIGH); // LEFT
@@ -1171,6 +1130,7 @@ void testTurns() {
   md.setM2Speed(0); // LEFT
   delay(2000);
 }
+
 void testCurve() {
   ACTION_COMPLETE = false;
   while (1) {
